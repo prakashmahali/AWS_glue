@@ -1,0 +1,56 @@
+
+from awsglue.context import GlueContext
+from awsglue.dynamicframe import DynamicFrame
+from awsglue.job import Job
+from awsglue.utils import getResolvedOptions
+from pyspark.sql.functions import *
+from pyspark.sql import SQLContext
+from pyspark.sql import SparkSession
+from pyspark.sql import SparkContext
+
+
+from datetime import datetime, timezone
+import boto3
+
+
+global glueContext;
+global job;
+mandatory_fields = ['JOB_NAME','OUT_BUCKET','INP_BUCKET']
+default_optional_args = {'SPLIT_FLAG':'yes', 'INP_FORMAT':'json', 'OUT_FORMAT': "json" ,'SPLIT_FLD': 'sector', 'DEDUP_FLD':'ticket_symbol'}
+
+given_optional_fields_key = list(set([i[2:] for i in sys.argv]).intersection([i for i in default_optional_args]))
+
+args_temp = getResolvedOptions(sys.argv,
+                               mandatory_fields+given_optional_fields_key)
+default_optional_args.update(args_temp)
+
+s3inp = default_optional_args['INP_BUCKET']
+s3out = default_optional_args['OUT_BUCKET']
+splitFlag = default_optional_args['SPLIT_FLAG']
+inpformat = default_optional_args['INP_FORMAT']
+outformat = default_optional_args['OUT_FORMAT']
+splitfld = default_optional_args['SPLIT_FLD']
+dedupfld = default_optional_args['DEDUP_FLD']
+
+
+sc = SparkContext.getOrCreate()
+sqlContext = SQLContext(sc)
+
+glueContext = GlueContext(sc)
+job = Job(glueContext)
+job.init(default_optional_args['JOB_NAME'], default_optional_args)
+
+datasource1 = glueContext.create_dynamic_frame.from_options("s3", {'paths' : [s3inp], 'recurse' : True}, format=inpformat, transformation_ctx="datasource1")
+dataFrameInp = datasource1.toDF()
+if splitFlag.lower() == "yes" :
+    df = dataFrameInp.select(splitfld).distinct()
+    distinctEventTypes = df.rdd.flatMap(lambda x: x).collect()
+    try:
+        for x in distinctEventTypes :
+            df_filtered = dataFrameInp.filter(dataFrameInp[splitfld] == x)
+            s3_path = s3out + "/" + x
+            final = DynamicFrame.fromDF(df_filtered, glueContext , "test_data")
+            glueContext.write_dynamic_frame.from_options(frame=final,connection_type="s3",connection_options={"path": s3_path},format="json")
+    except:
+        e = sys.exc_info()[0]
+
