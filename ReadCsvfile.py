@@ -12,7 +12,7 @@ glueJob.init(args['JOB_NAME'],args)
 #sparkSession = glueContext.sparkSession
 spark = glueContext.spark_session
 
-#df = sparkSession.read.csv("s3a://prakashmahali")
+#df = sparkSession.read.csv("s3a://pkm")
 #df.show()
 
 #dfnew = spark.read.option("header","true").option("delimiter", ",").csv("s3a://pkm")
